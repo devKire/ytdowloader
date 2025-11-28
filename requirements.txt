@@ -1,0 +1,5 @@
+yt-dlp==2023.11.16
+tkinterweb==3.10.0
+pillow==10.1.0
+requests==2.31.0
+urllib3==2.1.0
