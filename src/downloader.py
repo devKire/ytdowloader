@@ -1,3 +1,5 @@
+# ytdowloader\src\downloader.py
+
 import yt_dlp
 import os
 import threading
@@ -14,7 +16,10 @@ class YouTubeDownloader:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
+            'format_sort': ['res:2160', 'res:1440', 'res:1080', 'res:720', 'res:480', 'res:360'],
+            'extract_flat': False,
         }
+    
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -45,11 +50,28 @@ class YouTubeDownloader:
             for fmt in info['formats']:
                 format_note = fmt.get('format_note', 'unknown')
                 ext = fmt.get('ext', 'unknown')
+                height = fmt.get('height', 0)
+                vcodec = fmt.get('vcodec', 'none')
+                acodec = fmt.get('acodec', 'none')
                 filesize = fmt.get('filesize', fmt.get('filesize_approx', 0))
                 
-                if fmt.get('vcodec') != 'none' and fmt.get('acodec') != 'none':
-                    # Formato de vídeo com áudio
-                    resolution = f"{format_note}" if format_note != 'none' else f"{fmt.get('height', '?')}p"
+                # Filtrar formatos indesejados
+                if vcodec == 'none' and acodec == 'none':
+                    continue
+                
+                # Obter qualidade/bitrate
+                abr = fmt.get('abr', 0)
+                tbr = fmt.get('tbr', 0)
+                
+                if vcodec != 'none' and acodec != 'none':
+                    # Formato combinado (vídeo + áudio)
+                    if height:
+                        resolution = f"{height}p"
+                    elif 'x' in format_note:
+                        resolution = format_note
+                    else:
+                        resolution = format_note or 'unknown'
+                    
                     formats['video'].append({
                         'format_id': fmt['format_id'],
                         'resolution': resolution,
@@ -57,19 +79,39 @@ class YouTubeDownloader:
                         'filesize': self.format_filesize(filesize),
                         'quality': f"{resolution} ({ext})"
                     })
-                elif fmt.get('acodec') != 'none' and fmt.get('vcodec') == 'none':
+                elif acodec != 'none' and vcodec == 'none':
                     # Apenas áudio
-                    abr = fmt.get('abr', 0)
                     formats['audio'].append({
                         'format_id': fmt['format_id'],
-                        'quality': f"{abr}kbps ({ext})",
+                        'quality': f"{int(abr)}kbps ({ext})",
                         'ext': ext,
                         'filesize': self.format_filesize(filesize)
                     })
         
-        # Remover duplicatas e ordenar
-        formats['video'] = self.remove_duplicate_formats(formats['video'])
-        formats['audio'] = self.remove_duplicate_formats(formats['audio'])
+        # Ordenar formatos de vídeo por resolução
+        def get_height(res_str):
+            try:
+                if 'x' in res_str:
+                    return int(res_str.split('x')[1])
+                elif 'p' in res_str:
+                    return int(res_str.replace('p', ''))
+                else:
+                    return 0
+            except:
+                return 0
+        
+        formats['video'] = sorted(
+            self.remove_duplicate_formats(formats['video']),
+            key=lambda x: get_height(x['resolution']),
+            reverse=True  # Maior resolução primeiro
+        )
+        
+        # Ordenar formatos de áudio por bitrate
+        formats['audio'] = sorted(
+            self.remove_duplicate_formats(formats['audio']),
+            key=lambda x: int(x['quality'].split('kbps')[0]) if 'kbps' in x['quality'] else 0,
+            reverse=True
+        )
         
         return formats
     

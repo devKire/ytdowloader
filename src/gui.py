@@ -1,3 +1,5 @@
+# ytdowloader\src\gui.py
+
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import threading
@@ -287,16 +289,61 @@ class YouTubeDownloaderGUI:
     def setup_quality_options(self, formats):
         """Configura as opções de qualidade"""
         # Vídeo
-        video_qualities = [fmt['quality'] for fmt in formats['video']]
-        self.video_quality['values'] = video_qualities
-        if video_qualities:
-            self.video_quality.set(video_qualities[0])
+        video_qualities = []
+        for fmt in formats['video']:
+            # Extrair resolução numérica para ordenação
+            res_str = fmt.get('resolution', '0p')
+            if 'x' in res_str:  # Formato como "1280x720"
+                try:
+                    height = int(res_str.split('x')[1])
+                    quality_text = f"{height}p ({fmt.get('ext', 'mp4')})"
+                except:
+                    quality_text = f"{res_str} ({fmt.get('ext', 'mp4')})"
+            elif 'p' in res_str:  # Formato como "720p"
+                try:
+                    height = int(res_str.replace('p', '').split()[0])
+                    quality_text = f"{height}p ({fmt.get('ext', 'mp4')})"
+                except:
+                    quality_text = f"{res_str} ({fmt.get('ext', 'mp4')})"
+            else:
+                quality_text = f"{res_str} ({fmt.get('ext', 'mp4')})"
+            
+            video_qualities.append({
+                'text': quality_text,
+                'format_id': fmt['format_id'],
+                'height': self.extract_height(res_str)
+            })
+        
+        # Ordenar por qualidade (maior primeiro)
+        video_qualities.sort(key=lambda x: x['height'], reverse=True)
+        
+        # Criar lista para o Combobox
+        quality_list = [q['text'] for q in video_qualities]
+        self.video_quality['values'] = quality_list
+        
+        # Salvar mapeamento para uso posterior
+        self.video_quality_map = {q['text']: q['format_id'] for q in video_qualities}
+        
+        if quality_list:
+            self.video_quality.set(quality_list[0])  # Selecionar a melhor qualidade por padrão
         
         # Áudio
         audio_qualities = [fmt['quality'] for fmt in formats['audio']]
         self.audio_quality['values'] = audio_qualities
         if audio_qualities:
             self.audio_quality.set(audio_qualities[0])
+
+    def extract_height(self, resolution_str):
+        """Extrai altura numérica da string de resolução"""
+        try:
+            if 'x' in resolution_str:
+                return int(resolution_str.split('x')[1])
+            elif 'p' in resolution_str:
+                return int(resolution_str.replace('p', '').split()[0])
+            else:
+                return 0
+        except:
+            return 0
     
     def on_download_type_change(self):
         """Altera a interface baseada no tipo de download"""
@@ -327,12 +374,16 @@ class YouTubeDownloaderGUI:
         }
         
         if self.download_type.get() == 'video':
-            # Obter format_id da qualidade selecionada
+            # Usar o mapeamento para obter o format_id correto
             selected_quality = self.video_quality.get()
-            for fmt in self.video_info['formats']['video']:
-                if fmt['quality'] == selected_quality:
-                    download_options['video_quality'] = fmt['format_id']
-                    break
+            if selected_quality in getattr(self, 'video_quality_map', {}):
+                download_options['video_quality'] = self.video_quality_map[selected_quality]
+            else:
+                # Fallback: procurar no formato antigo
+                for fmt in self.video_info['formats']['video']:
+                    if fmt['quality'] == selected_quality:
+                        download_options['video_quality'] = fmt['format_id']
+                        break
         else:
             download_options['audio_format'] = self.audio_format.get()
             # Extrair qualidade do áudio (ex: "128kbps" -> "128")

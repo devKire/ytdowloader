@@ -1,3 +1,5 @@
+# ytdowloader\src\main.py
+
 import tkinter as tk
 from .gui import YouTubeDownloaderGUI
 import sys
